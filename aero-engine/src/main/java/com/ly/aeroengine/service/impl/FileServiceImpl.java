@@ -6,7 +6,9 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.ly.aeroengine.entity.FileChunkRecord;
 import com.ly.aeroengine.entity.FileRecord;
+import com.ly.aeroengine.entity.bo.FileProcessBo;
 import com.ly.aeroengine.entity.bo.ShardMetadataBo;
+import com.ly.aeroengine.entity.request.FileProcessParam;
 import com.ly.aeroengine.entity.request.MultipartFileParam;
 import com.ly.aeroengine.enums.FileResultCodeEnum;
 import com.ly.aeroengine.exception.FileServiceBizException;
@@ -16,6 +18,13 @@ import com.ly.aeroengine.service.FileService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.yarn.api.protocolrecords.GetNewApplicationResponse;
+import org.apache.hadoop.yarn.api.records.*;
+import org.apache.hadoop.yarn.client.api.YarnClient;
+import org.apache.hadoop.yarn.client.api.YarnClientApplication;
+import org.apache.hadoop.yarn.conf.YarnConfiguration;
+import org.apache.hadoop.yarn.exceptions.YarnException;
+import org.apache.hadoop.yarn.util.Records;
 import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +45,7 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
@@ -72,6 +82,7 @@ public class FileServiceImpl implements FileService {
     private RedisTemplate<String, String> redisTemplate;
     @Autowired
     ServletWebServerApplicationContext context;
+    private static int retryNum = 0;
 
     @Override
     public Path mkdir(String loginName) {
@@ -122,7 +133,9 @@ public class FileServiceImpl implements FileService {
         }
         else
         // 4.如果获取到 返回
+        {
             return new ShardMetadataBo(Long.parseLong(shardSize),Integer.parseInt(concurrency));
+        }
     }
 
     @Override
@@ -169,6 +182,100 @@ public class FileServiceImpl implements FileService {
         } catch (InterruptedException | IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public FileProcessBo processFile(FileProcessParam fileProcessParam) {
+        System.setProperty("HADOOP_USER_NAME","root");
+        YarnConfiguration yarnConfiguration = new YarnConfiguration();
+        yarnConfiguration.set("yarn.resourcemanager.hostname","192.168.88.62");
+        yarnConfiguration.set("yarn.nodemanager.hostname","192.168.88.62");
+        yarnConfiguration.set("yarn.nodemanager.hostname","192.168.88.63");
+        yarnConfiguration.set("yarn.nodemanager.hostname","192.168.88.64");
+        yarnConfiguration.set("yarn.nodemanager.aux-services","mapreduce_shuffle");
+
+        //创建yarnClient实例
+        try (YarnClient yarnClient = YarnClient.createYarnClient()) {
+            yarnClient.init(yarnConfiguration);
+            //启动yarnClient
+            yarnClient.start();
+            //创建YarnClientApplication实例
+            YarnClientApplication application = yarnClient.createApplication();
+            GetNewApplicationResponse newApplicationResponse = application.getNewApplicationResponse();
+            // 设置应用程序名称和队列
+            ApplicationSubmissionContext appContext = application.getApplicationSubmissionContext();
+            ApplicationId appId = appContext.getApplicationId();
+            appContext.setApplicationName("MyYarnApplication");
+            appContext.setQueue("default");
+            appContext.setApplicationType("MAPREDUCE");
+
+            ContainerLaunchContext amContainer = Records.newRecord(ContainerLaunchContext.class);
+            amContainer.setCommands(Collections.singletonList("$HADOOP_HOME/bin/hadoop jar /export/servers/jar_test/mapreduce-1.0-SNAPSHOT.jar com.ly.mapreduce.JobMain"));
+
+            appContext.setAMContainerSpec(amContainer);
+
+            // 设置资源请求
+            org.apache.hadoop.yarn.api.records.Resource resource = Records.newRecord(org.apache.hadoop.yarn.api.records.Resource.class);
+            resource.setMemorySize(2048); // 设置内存资源大小
+            resource.setVirtualCores(1); // 设置虚拟核心数
+
+            appContext.setResource(resource);
+            yarnClient.submitApplication(appContext);
+
+            String preAppId = appId.toString();
+            String[] split = preAppId.split("_");
+            int last = Integer.parseInt(split[split.length - 1]);
+            last++;
+            String lastNum = String.valueOf(last);
+            split[split.length - 1] = lastNum;
+            StringBuilder stringBuilder = new StringBuilder();
+            for (int i = 0; i < split.length; i++) {
+                stringBuilder.append(split[i]);
+                if (i != (split.length - 1)){
+                    stringBuilder.append("_");
+                }
+            }
+            String realAppId = stringBuilder.toString();
+
+            ApplicationId applicationId = ApplicationId.fromString(realAppId);
+            // 打印应用程序ID
+            System.out.println("Submitted YARN application. ApplicationId: " + applicationId);
+            ApplicationReport report = yarnClient.getApplicationReport(applicationId);
+            YarnApplicationState state = report.getYarnApplicationState();
+            while (state != YarnApplicationState.FINISHED && state != YarnApplicationState.FAILED && state != YarnApplicationState.KILLED){
+                report = yarnClient.getApplicationReport(applicationId);
+                state = report.getYarnApplicationState();
+                log.info("Got application report " +
+                        ", clientToAMToken=" + report.getClientToAMToken()
+                        + ", appDiagnostics=" + report.getDiagnostics()
+                        + ", appMasterHost=" + report.getHost()
+                        + ", appQueue=" + report.getQueue()
+                        + ", appMasterRpcPort=" + report.getRpcPort()
+                        + ", appStartTime=" + report.getStartTime()
+                        + ", yarnAppState=" + report.getYarnApplicationState().toString()
+                        + ", distributedFinalState=" + report.getFinalApplicationStatus().toString()
+                        + ", appTrackingUrl=" + report.getTrackingUrl()
+                        + ", appUser=" + report.getUser());
+                Thread.sleep(10000);
+            }if (state == YarnApplicationState.FAILED) {
+                //应用跑失败，重试
+                if (retryNum < 3){
+                    yarnClient.stop();
+                    this.processFile(fileProcessParam);
+                }else {
+                    //出问题了返回前端
+                    throw new FileServiceBizException(FILE_PROCESS_ERROR);
+                }
+            }else if (state == YarnApplicationState.KILLED){
+                //应用被强制中止，报错给前端
+                throw new FileServiceBizException(FILE_PROGRAM_RUDE_ABORT);
+            }
+            yarnClient.stop();
+        } catch (YarnException | IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        //应用跑成功，打回给前端
+        return FileProcessBo.builder().msg("文件处理成功！").build();
     }
 
     private boolean chunkUpload(MultipartFileParam fileParam, LocalDateTime arriveTime) throws IOException {

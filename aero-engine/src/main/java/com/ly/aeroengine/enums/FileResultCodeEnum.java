@@ -11,6 +11,8 @@ public enum FileResultCodeEnum implements IResultCodeEnum{
     FILE_HAS_BEEN_UPLOADED("FILE_HAS_BEEN_UPLOADED","文件已经上传过！",4000001),
     FILE_IS_EMPTY("FILE_IS_EMPTY","上传文件为空！",4000002),
     FILE_PREPROCESS_ERROR("FILE_PREPROCESS_ERROR","文件预处理失败！请重试！",4000003),
+    FILE_PROCESS_ERROR("FILE_PROCESS_ERROR","文件处理出错！请检查文件格式！",4000004),
+    FILE_PROGRAM_RUDE_ABORT("FILE_PROGRAM_RUDE_ABORT","文件处理程序被强制中止！",4000004),
     ;
 
     /** 枚举标识name */

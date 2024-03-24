@@ -1,8 +1,11 @@
 package com.ly.aeroengine.rest;
 
 import com.ly.aeroengine.entity.FileChunkRecord;
+import com.ly.aeroengine.entity.bo.FileProcessBo;
 import com.ly.aeroengine.entity.bo.ShardMetadataBo;
+import com.ly.aeroengine.entity.request.FileProcessParam;
 import com.ly.aeroengine.entity.request.MultipartFileParam;
+import com.ly.aeroengine.entity.response.FileProcessResponse;
 import com.ly.aeroengine.entity.response.FileUploadResponse;
 import com.ly.aeroengine.entity.response.ShardMetadataResponse;
 import com.ly.aeroengine.result.Result;
@@ -42,7 +45,7 @@ public class FileController {
             if (process){
                 Path path = fileService.mkdir(file.getLoginName());
                 String result = fileService.fileUpload2HDFS(file, path);
-                response = new FileUploadResponse(result, path);
+                response = new FileUploadResponse(result, path.getName());
             }
         }
         return Result.ok(response);
@@ -69,5 +72,12 @@ public class FileController {
     public Result<List> check(@RequestParam("md5") String md5) {
         List<FileChunkRecord> check = fileService.check(md5);
         return Result.ok(check);
+    }
+
+    @PostMapping("/process")
+    public Result<FileProcessResponse> processFile(FileProcessParam fileProcessParam) {
+        FileProcessBo fileProcessBo = fileService.processFile(fileProcessParam);
+        FileProcessResponse fileProcessResponse = new FileProcessResponse(fileProcessBo.getMsg());
+        return Result.ok(fileProcessResponse);
     }
 }

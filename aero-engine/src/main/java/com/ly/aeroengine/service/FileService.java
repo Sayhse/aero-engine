@@ -1,7 +1,9 @@
 package com.ly.aeroengine.service;
 
 import com.ly.aeroengine.entity.FileChunkRecord;
+import com.ly.aeroengine.entity.bo.FileProcessBo;
 import com.ly.aeroengine.entity.bo.ShardMetadataBo;
+import com.ly.aeroengine.entity.request.FileProcessParam;
 import com.ly.aeroengine.entity.request.MultipartFileParam;
 import org.apache.hadoop.fs.Path;
 
@@ -38,4 +40,6 @@ public interface FileService {
     List<FileChunkRecord> check(String md5);
 
     boolean preProcess(MultipartFileParam file);
+
+    FileProcessBo processFile(FileProcessParam fileProcessParam);
 }

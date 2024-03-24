@@ -1,5 +1,8 @@
 package com.ly.aeroengine.file;
 
+import org.apache.hadoop.yarn.api.records.ApplicationId;
+import org.apache.hadoop.yarn.util.Records;
+
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 /**
@@ -8,27 +11,29 @@ import java.lang.management.ThreadMXBean;
  **/
 public class ThreadTests {
         public static void main(String[] args) {
-            // 获取当前线程管理器
-            ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+            String preAppId = "application_1634567890000_0000012345";
+            String[] split = preAppId.split("_");
+            String s = split[split.length - 1];
+            // 正则表达式匹配非数字字符
+            String[] parts = s.split("[^\\d]");
+            // 假设字符串末尾有数字
+            int lastIndex = parts.length - 1;
+            // 将数字字符串转换成整数并加一
+            int numericSuffix = Integer.parseInt(parts[lastIndex]) + 1;
+            // 移除末尾数字，并将新的数字加入
+            parts[lastIndex] = String.valueOf(numericSuffix);
+            // 重新拼接字符串
+            split[split.length - 1] = String.join("", parts);
+            StringBuilder stringBuilder = new StringBuilder();
+            for (int i = 0; i < split.length; i++) {
+                stringBuilder.append(split[i]);
+                if (i != (split.length - 1)){
+                    stringBuilder.append("_");
+                }
+            }
+            String realAppId = stringBuilder.toString();
 
-            // 获取当前计算机上的线程数量
-            int threadCount = threadMXBean.getThreadCount();
-            System.out.println("活动线程个数：" + threadCount);
-
-            // 获取当前计算机上的守护线程数量
-            int daemonThreadCount = threadMXBean.getDaemonThreadCount();
-            System.out.println("守护线程个数：" + daemonThreadCount);
-
-            System.out.println("峰值线程个数：" + threadMXBean.getPeakThreadCount());
-            System.out.println("总线程数：" + threadMXBean.getTotalStartedThreadCount());
-
-            // 计算空闲线程数量
-            int freeThreadCount = threadCount - daemonThreadCount;
-
-            System.out.println("空闲线程数量：" + freeThreadCount);
-            System.out.println("活动线程个数：" + Thread.activeCount());
-            System.out.println("所有线程个数：" + Thread.getAllStackTraces().keySet().size());
-
-
+            ApplicationId applicationId = ApplicationId.fromString(realAppId);
+            System.out.println(applicationId);
         }
 }
