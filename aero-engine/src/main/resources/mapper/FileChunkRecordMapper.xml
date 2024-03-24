@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ly.aeroengine.mapper.FileChunkRecordMapper">
+
+    <select id="queryByMd5" resultType="com.ly.aeroengine.entity.FileChunkRecord">
+        SELECT
+            id,
+            md5,
+            chunk,
+            upload_status
+        FROM
+            file_chunk_record
+        WHERE
+            md5 = #{md5} and is_deleted = '0';
+    </select>
+</mapper>
